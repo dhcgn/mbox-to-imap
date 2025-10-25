@@ -22,6 +22,7 @@ type Config struct {
 	StateDir           string
 	DryRun             bool
 	LogLevel           string
+	LogDir             string
 	IncludeHeader      []string
 	IncludeBody        []string
 	ExcludeHeader      []string
@@ -47,6 +48,7 @@ func RegisterFlags(cmd *cobra.Command) error {
 	flags.String("state-dir", defaultStateDir, "Directory for incremental sync state files")
 	flags.Bool("dry-run", false, "Simulate the sync and emit stats without uploading")
 	flags.String("log-level", "info", "Logging level: debug, info, warn, error")
+	flags.String("log-dir", "", "Optional directory where log files will be written")
 	flags.StringArray("include-header", nil, "Regex allow-list applied to message headers (mutually exclusive with exclude flags)")
 	flags.StringArray("include-body", nil, "Regex allow-list applied to message bodies (mutually exclusive with exclude flags)")
 	flags.StringArray("exclude-header", nil, "Regex block-list applied to message headers (mutually exclusive with include flags)")
@@ -113,6 +115,10 @@ func LoadConfig(cmd *cobra.Command) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	logDir, err := flags.GetString("log-dir")
+	if err != nil {
+		return Config{}, err
+	}
 	includeHeader, err := flags.GetStringArray("include-header")
 	if err != nil {
 		return Config{}, err
@@ -141,6 +147,11 @@ func LoadConfig(cmd *cobra.Command) (Config, error) {
 		}
 	}
 
+	logDir = strings.TrimSpace(logDir)
+	if logDir != "" {
+		logDir = filepath.Clean(logDir)
+	}
+
 	logLevel = strings.ToLower(logLevel)
 	if logLevel == "warning" {
 		logLevel = "warn"
@@ -158,6 +169,7 @@ func LoadConfig(cmd *cobra.Command) (Config, error) {
 		StateDir:           filepath.Clean(stateDir),
 		DryRun:             dryRun,
 		LogLevel:           logLevel,
+		LogDir:             logDir,
 		IncludeHeader:      includeHeader,
 		IncludeBody:        includeBody,
 		ExcludeHeader:      excludeHeader,

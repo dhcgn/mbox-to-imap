@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,7 +23,18 @@ func main() {
 				return err
 			}
 
-			return run(cfg)
+			logger, cleanup, err := setupLogger(cfg)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				_ = cleanup()
+			}()
+
+			slog.SetDefault(logger)
+			logger.Info("starting mbox-to-imap", "mbox", cfg.MboxPath, "target", cfg.TargetFolder, "dryRun", cfg.DryRun)
+
+			return run(cfg, logger)
 		},
 	}
 
@@ -34,7 +49,48 @@ func main() {
 	}
 }
 
-func run(cfg config.Config) error {
+func run(cfg config.Config, logger *slog.Logger) error {
 	// TODO: wire the configuration into the importer workflow.
+	logger.Debug("run invoked")
 	return nil
+}
+
+func setupLogger(cfg config.Config) (*slog.Logger, func() error, error) {
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelInfo)
+
+	switch cfg.LogLevel {
+	case "debug":
+		level.Set(slog.LevelDebug)
+	case "info":
+		level.Set(slog.LevelInfo)
+	case "warn":
+		level.Set(slog.LevelWarn)
+	case "error":
+		level.Set(slog.LevelError)
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+	cleanup := func() error { return nil }
+
+	if cfg.LogDir != "" {
+		if err := os.MkdirAll(cfg.LogDir, 0o755); err != nil {
+			return nil, cleanup, err
+		}
+
+		logFilePath := filepath.Join(cfg.LogDir, fmt.Sprintf("mbox-to-imap-%s.log", time.Now().Format("20060102T150405")))
+		file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return nil, cleanup, err
+		}
+
+		handler := slog.NewTextHandler(io.MultiWriter(os.Stdout, file), opts)
+		cleanup = func() error {
+			return file.Close()
+		}
+		return slog.New(handler), cleanup, nil
+	}
+
+	handler := slog.NewTextHandler(os.Stdout, opts)
+	return slog.New(handler), cleanup, nil
 }
