@@ -162,6 +162,11 @@ func (u *Uploader) dial(ctx context.Context) (*imapclient.Client, func(), error)
 		return nil, nil, fmt.Errorf("imap login failed: %w", err)
 	}
 
+	if err := u.ensureMailbox(client); err != nil {
+		_ = client.Close()
+		return nil, nil, err
+	}
+
 	if u.logger != nil {
 		u.logger.Debug("imap connection established", "address", address, "user", u.opts.Username, "target", u.targetFolder(), "tls", u.opts.UseTLS)
 	}
@@ -228,4 +233,27 @@ func (u *Uploader) targetFolder() string {
 		return "INBOX"
 	}
 	return u.opts.TargetFolder
+}
+
+func (u *Uploader) ensureMailbox(client *imapclient.Client) error {
+	target := u.targetFolder()
+	cmd := client.Create(target, nil)
+	if err := cmd.Wait(); err != nil {
+		var respErr imapv2.Error
+		if errors.As(err, &respErr) {
+			if respErr.Code == imapv2.ResponseCodeAlreadyExists {
+				if u.logger != nil {
+					u.logger.Debug("imap mailbox already exists", "mailbox", target)
+				}
+				return nil
+			}
+		}
+		return fmt.Errorf("ensure mailbox %s: %w", target, err)
+	}
+
+	if u.logger != nil {
+		u.logger.Info("imap mailbox created", "mailbox", target)
+	}
+
+	return nil
 }
