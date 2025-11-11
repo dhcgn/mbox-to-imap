@@ -71,9 +71,17 @@ func (u *Uploader) run(ctx context.Context) error {
 				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, Err: ErrMissingMessageID})
 				continue
 			}
+			if msg.Hash == "" {
+				err := fmt.Errorf("message %s missing hash", msg.ID)
+				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, MessageID: msg.ID, Err: err})
+				return err
+			}
 
 			if u.opts.DryRun {
-				u.tracker.MarkProcessed(msg.ID)
+				if err := u.tracker.MarkProcessed(msg.Hash, msg.ID); err != nil {
+					u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, MessageID: msg.ID, Err: err})
+					return err
+				}
 				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeDryRunUpload, MessageID: msg.ID})
 				if u.logger != nil {
 					u.logger.Debug("dry-run upload", "messageID", msg.ID, "target", u.opts.TargetFolder, "hash", msg.Hash)

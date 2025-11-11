@@ -6,4 +6,7 @@ go run main.go \
 	--imap-host 127.0.0.1 \
 	--imap-user test \
 	--imap-pass 'qwert' \
-	--log-level debug
+	--target-folder DEBUG \
+	--log-level debug \
+	--log-dir "." \
+	--state-dir "."

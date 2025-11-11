@@ -54,7 +54,10 @@ func main() {
 }
 
 func run(cfg config.Config, logger *slog.Logger) error {
-	r := runner.New(cfg, logger)
+	r, err := runner.New(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("runner.New: %w", err)
+	}
 	stats.NewReporter(r, logger)
 
 	readerOpts := mbox.Options{

@@ -43,8 +43,15 @@ type Runner struct {
 	since            time.Time
 }
 
-func New(cfg config.Config, logger *slog.Logger) *Runner {
+func New(cfg config.Config, logger *slog.Logger) (*Runner, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	tracker, err := state.NewFileTracker(cfg.StateDir, !cfg.DryRun)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("state tracker: %w", err)
+	}
+
 	r := &Runner{
 		cfg:      cfg,
 		logger:   logger,
@@ -53,11 +60,11 @@ func New(cfg config.Config, logger *slog.Logger) *Runner {
 		messages: make(chan model.Envelope, 32),
 		uploads:  make(chan model.Message, 32),
 		events:   make(chan stats.Event, 128),
-		tracker:  state.NewMemoryTracker(),
+		tracker:  tracker,
 	}
 
 	r.AddStage("bridge", r.bridge)
-	return r
+	return r, nil
 }
 
 func (r *Runner) Config() config.Config {
@@ -163,7 +170,7 @@ func (r *Runner) bridge(ctx context.Context) error {
 				continue
 			}
 
-			if r.tracker.AlreadyProcessed(msg.ID) {
+			if msg.Hash != "" && r.tracker.AlreadyProcessed(msg.Hash) {
 				r.EmitEvent(stats.Event{Stage: stats.StageMbox, Type: stats.EventTypeDuplicate, MessageID: msg.ID})
 				continue
 			}
