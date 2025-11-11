@@ -5,6 +5,7 @@ import "time"
 // Message represents a single email message extracted from an mbox archive.
 type Message struct {
 	ID         string
+	Hash       string
 	ReceivedAt time.Time
 	Size       int64
 	Raw        []byte

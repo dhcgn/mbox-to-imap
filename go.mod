@@ -2,7 +2,10 @@ module github.com/dhcgn/mbox-to-imap
 
 go 1.24.5
 
-require github.com/spf13/cobra v1.10.1
+require (
+	github.com/emersion/go-mbox v1.0.4
+	github.com/spf13/cobra v1.10.1
+)
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

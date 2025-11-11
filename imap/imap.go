@@ -76,7 +76,7 @@ func (u *Uploader) run(ctx context.Context) error {
 				u.tracker.MarkProcessed(msg.ID)
 				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeDryRunUpload, MessageID: msg.ID})
 				if u.logger != nil {
-					u.logger.Debug("dry-run upload", "messageID", msg.ID, "target", u.opts.TargetFolder)
+					u.logger.Debug("dry-run upload", "messageID", msg.ID, "target", u.opts.TargetFolder, "hash", msg.Hash)
 				}
 				continue
 			}
