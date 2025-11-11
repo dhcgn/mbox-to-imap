@@ -11,6 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dhcgn/mbox-to-imap/config"
+	"github.com/dhcgn/mbox-to-imap/imap"
+	"github.com/dhcgn/mbox-to-imap/mbox"
+	"github.com/dhcgn/mbox-to-imap/runner"
+	"github.com/dhcgn/mbox-to-imap/stats"
 )
 
 func main() {
@@ -50,9 +54,37 @@ func main() {
 }
 
 func run(cfg config.Config, logger *slog.Logger) error {
-	// TODO: wire the configuration into the importer workflow.
-	logger.Debug("run invoked")
-	return nil
+	r := runner.New(cfg, logger)
+	stats.NewReporter(r, logger)
+
+	readerOpts := mbox.Options{
+		Path:          cfg.MboxPath,
+		IncludeHeader: cfg.IncludeHeader,
+		IncludeBody:   cfg.IncludeBody,
+		ExcludeHeader: cfg.ExcludeHeader,
+		ExcludeBody:   cfg.ExcludeBody,
+	}
+
+	if _, err := mbox.NewProducer(readerOpts, r, logger); err != nil {
+		return fmt.Errorf("mbox.NewProducer: %w", err)
+	}
+
+	uploaderOpts := imap.Options{
+		Host:               cfg.IMAPHost,
+		Port:               cfg.IMAPPort,
+		Username:           cfg.IMAPUser,
+		Password:           cfg.IMAPPass,
+		UseTLS:             cfg.UseTLS,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		TargetFolder:       cfg.TargetFolder,
+		DryRun:             cfg.DryRun,
+	}
+
+	if _, err := imap.NewUploader(uploaderOpts, r, logger); err != nil {
+		return fmt.Errorf("imap.NewUploader: %w", err)
+	}
+
+	return r.Start()
 }
 
 func setupLogger(cfg config.Config) (*slog.Logger, func() error, error) {
