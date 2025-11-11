@@ -2,9 +2,15 @@ package imap
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"strconv"
+
+	imapv2 "github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/dhcgn/mbox-to-imap/model"
 	"github.com/dhcgn/mbox-to-imap/runner"
@@ -13,7 +19,6 @@ import (
 )
 
 var (
-	ErrNotImplemented   = errors.New("imap uploader not implemented yet")
 	ErrMissingMessageID = errors.New("message id is empty")
 )
 
@@ -59,6 +64,16 @@ func NewUploader(opts Options, r *runner.Runner, logger *slog.Logger) (*Uploader
 }
 
 func (u *Uploader) run(ctx context.Context) error {
+	var (
+		client  *imapclient.Client
+		cleanup func()
+	)
+	defer func() {
+		if cleanup != nil {
+			cleanup()
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -84,13 +99,133 @@ func (u *Uploader) run(ctx context.Context) error {
 				}
 				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeDryRunUpload, MessageID: msg.ID})
 				if u.logger != nil {
-					u.logger.Debug("dry-run upload", "messageID", msg.ID, "target", u.opts.TargetFolder, "hash", msg.Hash)
+					u.logger.Debug("dry-run upload", "messageID", msg.ID, "target", u.targetFolder(), "hash", msg.Hash)
 				}
 				continue
 			}
 
-			u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, MessageID: msg.ID, Err: ErrNotImplemented})
-			return ErrNotImplemented
+			if client == nil {
+				var err error
+				client, cleanup, err = u.dial(ctx)
+				if err != nil {
+					u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, MessageID: msg.ID, Err: err})
+					return err
+				}
+			}
+
+			if err := u.appendMessage(client, msg); err != nil {
+				err = fmt.Errorf("upload message %s: %w", msg.ID, err)
+				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, MessageID: msg.ID, Err: err})
+				return err
+			}
+
+			if err := u.tracker.MarkProcessed(msg.Hash, msg.ID); err != nil {
+				u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeError, MessageID: msg.ID, Err: err})
+				return err
+			}
+
+			u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeUploaded, MessageID: msg.ID})
+			if u.logger != nil {
+				u.logger.Debug("uploaded message", "messageID", msg.ID, "target", u.targetFolder(), "hash", msg.Hash)
+			}
 		}
 	}
+}
+
+func (u *Uploader) dial(ctx context.Context) (*imapclient.Client, func(), error) {
+	address := net.JoinHostPort(u.opts.Host, strconv.Itoa(u.opts.Port))
+	options := &imapclient.Options{}
+
+	if u.opts.UseTLS {
+		options.TLSConfig = &tls.Config{
+			ServerName:         u.opts.Host,
+			InsecureSkipVerify: u.opts.InsecureSkipVerify,
+		}
+	}
+
+	var (
+		client *imapclient.Client
+		err    error
+	)
+
+	if u.opts.UseTLS {
+		client, err = imapclient.DialTLS(address, options)
+	} else {
+		client, err = imapclient.DialInsecure(address, options)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial imap %s: %w", address, err)
+	}
+
+	if err := client.Login(u.opts.Username, u.opts.Password).Wait(); err != nil {
+		_ = client.Close()
+		return nil, nil, fmt.Errorf("imap login failed: %w", err)
+	}
+
+	if u.logger != nil {
+		u.logger.Debug("imap connection established", "address", address, "user", u.opts.Username, "target", u.targetFolder(), "tls", u.opts.UseTLS)
+	}
+
+	stopClose := context.AfterFunc(ctx, func() {
+		_ = client.Close()
+	})
+
+	cleanup := func() {
+		stopClose()
+		if ctx.Err() == nil {
+			if err := client.Logout().Wait(); err != nil {
+				if u.logger != nil {
+					u.logger.Warn("imap logout failed", "err", err)
+				}
+			}
+		}
+		if err := client.Close(); err != nil && u.logger != nil {
+			u.logger.Debug("imap connection closed", "err", err)
+		}
+	}
+
+	return client, cleanup, nil
+}
+
+func (u *Uploader) appendMessage(client *imapclient.Client, msg model.Message) error {
+	target := u.targetFolder()
+	size := int64(len(msg.Raw))
+
+	var opts *imapv2.AppendOptions
+	if !msg.ReceivedAt.IsZero() {
+		opts = &imapv2.AppendOptions{Time: msg.ReceivedAt}
+	}
+
+	cmd := client.Append(target, size, opts)
+
+	remaining := msg.Raw
+	for len(remaining) > 0 {
+		n, err := cmd.Write(remaining)
+		if err != nil {
+			_ = cmd.Close()
+			return fmt.Errorf("append write: %w", err)
+		}
+		if n == 0 {
+			_ = cmd.Close()
+			return fmt.Errorf("append write: wrote 0 bytes")
+		}
+		remaining = remaining[n:]
+	}
+
+	if err := cmd.Close(); err != nil {
+		return fmt.Errorf("append close: %w", err)
+	}
+
+	if _, err := cmd.Wait(); err != nil {
+		return fmt.Errorf("append wait: %w", err)
+	}
+
+	return nil
+}
+
+func (u *Uploader) targetFolder() string {
+	if u.opts.TargetFolder == "" {
+		return "INBOX"
+	}
+	return u.opts.TargetFolder
 }
