@@ -52,7 +52,7 @@ func Execute() error {
 
 func init() {
 	rootCmd.AddCommand(importCmd)
-	
+
 	if err := config.RegisterFlags(importCmd); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to register CLI flags: %v\n", err)
 		os.Exit(1)
