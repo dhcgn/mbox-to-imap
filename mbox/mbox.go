@@ -97,13 +97,19 @@ type fileReader struct {
 }
 
 func (f *fileReader) Stream(ctx context.Context, out chan<- model.Envelope) error {
-	file, err := os.Open(f.path)
-	if err != nil {
-		return fmt.Errorf("open mbox: %w", err)
-	}
-	defer file.Close()
+	var reader *mboxlib.Reader
 
-	reader := mboxlib.NewReader(file)
+	if mbox_test_data_using {
+		reader = mboxlib.NewReader(bytes.NewReader(mbox_test_data))
+	} else {
+		file, err := os.Open(f.path)
+		if err != nil {
+			return fmt.Errorf("open mbox: %w", err)
+		}
+		defer file.Close()
+		reader = mboxlib.NewReader(file)
+	}
+
 	for idx := 0; ; idx++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -289,16 +295,27 @@ type MboxMessage struct {
 	Body    []byte
 }
 
+var (
+	mbox_test_data_using = false
+	mbox_test_data       []byte
+)
+
 // Read opens an mbox file and iterates through its messages,
 // calling the provided callback for each message.
 func Read(path string, callback func(m *MboxMessage) error) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open mbox: %w", err)
-	}
-	defer file.Close()
+	var reader *mboxlib.Reader
 
-	reader := mboxlib.NewReader(file)
+	if mbox_test_data_using {
+		reader = mboxlib.NewReader(bytes.NewReader(mbox_test_data))
+	} else {
+		file, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("open mbox: %w", err)
+		}
+		defer file.Close()
+		reader = mboxlib.NewReader(file)
+	}
+
 	for {
 		msgReader, err := reader.NextMessage()
 		if err != nil {
