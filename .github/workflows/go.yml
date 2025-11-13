@@ -26,3 +26,9 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Run mbox-stats debug script
+      run: bash ./_debug.mbox-stats.sh
+
+    - name: Run dry-run debug script
+      run: bash ./_debug.dry-run.sh
