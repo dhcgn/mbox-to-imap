@@ -1,6 +1,6 @@
 #!/bin/bash
 
-go run main.go \
+go run main.go  mbox-to-imap \
 	--dry-run \
 	--mbox "/home/d/Downloads/takeout-20251017T122523Z-1-001/Takeout/Mail/All mail Including Spam and Trash.mbox" \
 	--imap-host 127.0.0.1 \

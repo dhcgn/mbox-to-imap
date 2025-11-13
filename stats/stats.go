@@ -2,7 +2,9 @@ package stats
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 )
@@ -148,4 +150,25 @@ func (r *Reporter) consume(ctx context.Context, events <-chan Event) error {
 
 func (r *Reporter) Summary() Summary {
 	return r.collector.Snapshot()
+}
+
+// PrettyPrintTop prints the top N most frequent items in a map.
+func PrettyPrintTop(m map[string]int, limit int) {
+	type pair struct {
+		Key   string
+		Value int
+	}
+
+	var pairs []pair
+	for k, v := range m {
+		pairs = append(pairs, pair{k, v})
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].Value > pairs[j].Value
+	})
+
+	for i := 0; i < limit && i < len(pairs); i++ {
+		fmt.Printf("%d. %s (%d)\n", i+1, pairs[i].Key, pairs[i].Value)
+	}
 }

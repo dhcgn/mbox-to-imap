@@ -282,3 +282,51 @@ func (p *Producer) run(ctx context.Context) error {
 	defer p.runner.CloseMailbox()
 	return p.reader.Stream(ctx, p.runner.MailboxWriter())
 }
+
+// MboxMessage represents a single message from an mbox file for stats.
+type MboxMessage struct {
+	Headers mail.Header
+	Body    []byte
+}
+
+// Read opens an mbox file and iterates through its messages,
+// calling the provided callback for each message.
+func Read(path string, callback func(m *MboxMessage) error) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open mbox: %w", err)
+	}
+	defer file.Close()
+
+	reader := mboxlib.NewReader(file)
+	for {
+		msgReader, err := reader.NextMessage()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+
+		msg, err := mail.ReadMessage(msgReader)
+		if err != nil {
+			// try to continue
+			continue
+		}
+
+		body, err := io.ReadAll(msg.Body)
+		if err != nil {
+			// try to continue
+			continue
+		}
+
+		mboxMsg := &MboxMessage{
+			Headers: msg.Header,
+			Body:    body,
+		}
+
+		if err := callback(mboxMsg); err != nil {
+			return err
+		}
+	}
+}
