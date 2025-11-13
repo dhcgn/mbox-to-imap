@@ -13,6 +13,7 @@ import (
 	"github.com/dhcgn/mbox-to-imap/config"
 	"github.com/dhcgn/mbox-to-imap/imap"
 	"github.com/dhcgn/mbox-to-imap/mbox"
+	"github.com/dhcgn/mbox-to-imap/progress"
 	"github.com/dhcgn/mbox-to-imap/runner"
 	"github.com/dhcgn/mbox-to-imap/stats"
 )
@@ -60,11 +61,36 @@ func init() {
 }
 
 func run(cfg config.Config, logger *slog.Logger) error {
+	// Count total messages in mbox file first
+	logger.Debug("counting messages in mbox file", "path", cfg.MboxPath)
+	totalMessages, err := mbox.CountMessages(cfg.MboxPath)
+	if err != nil {
+		return fmt.Errorf("count messages: %w", err)
+	}
+	logger.Debug("counted messages", "total", totalMessages)
+
 	r, err := runner.New(cfg, logger)
 	if err != nil {
 		return fmt.Errorf("runner.New: %w", err)
 	}
-	stats.NewReporter(r, logger)
+
+	// Get already processed count from state tracker
+	alreadyProcessed := r.Tracker().Snapshot().Processed
+	logger.Debug("state tracker loaded", "alreadyProcessed", alreadyProcessed)
+
+	// Create progress bar for info log level
+	var progressBar *progress.Bar
+	if cfg.LogLevel == "info" {
+		progressBar = progress.New(totalMessages, alreadyProcessed, cfg.LogLevel)
+		defer progressBar.Stop()
+	}
+
+	// Set up stats reporter with optional progress bar
+	if progressBar != nil {
+		progress.NewProgressReporter(r, progressBar, logger)
+	} else {
+		stats.NewReporter(r, logger)
+	}
 
 	readerOpts := mbox.Options{
 		Path:          cfg.MboxPath,

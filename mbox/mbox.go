@@ -347,3 +347,40 @@ func Read(path string, callback func(m *MboxMessage) error) error {
 		}
 	}
 }
+
+// CountMessages counts the total number of messages in an mbox file.
+func CountMessages(path string) (int, error) {
+	var reader *mboxlib.Reader
+
+	if mbox_test_data_using {
+		reader = mboxlib.NewReader(bytes.NewReader(mbox_test_data))
+	} else {
+		file, err := os.Open(path)
+		if err != nil {
+			return 0, fmt.Errorf("open mbox: %w", err)
+		}
+		defer file.Close()
+		reader = mboxlib.NewReader(file)
+	}
+
+	count := 0
+	for {
+		msgReader, err := reader.NextMessage()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return count, nil
+			}
+			return 0, err
+		}
+
+		// Just consume the message without parsing
+		_, err = io.Copy(io.Discard, msgReader)
+		if err != nil {
+			// Continue counting even if we can't read this message
+			count++
+			continue
+		}
+
+		count++
+	}
+}

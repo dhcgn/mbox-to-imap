@@ -8,5 +8,5 @@ go run main.go  mbox-to-imap \
 	--imap-pass 'qwert' \
 	--target-folder DEBUG \
 	--log-level debug \
-	--log-dir "." \
-	--state-dir "."
+	--log-dir "debug_scripte_output" \
+	--state-dir "debug_scripte_output"
