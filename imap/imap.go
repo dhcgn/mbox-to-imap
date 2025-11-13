@@ -167,6 +167,9 @@ func (u *Uploader) dial(ctx context.Context) (*imapclient.Client, func(), error)
 		return nil, nil, err
 	}
 
+	// TODO get all uids in the target mailbox and add them to the u *Uploader so that dulicate are not uploaded again
+	// add count of messages in the target mailbox to the logger
+
 	if u.logger != nil {
 		u.logger.Debug("imap connection established", "address", address, "user", u.opts.Username, "target", u.targetFolder(), "tls", u.opts.UseTLS)
 	}
