@@ -242,7 +242,7 @@ func (u *Uploader) ensureMailbox(client *imapclient.Client) error {
 	target := u.targetFolder()
 	cmd := client.Create(target, nil)
 	if err := cmd.Wait(); err != nil {
-		var respErr imapv2.Error
+		var respErr *imapv2.Error
 		if errors.As(err, &respErr) {
 			if respErr.Code == imapv2.ResponseCodeAlreadyExists {
 				if u.logger != nil {
