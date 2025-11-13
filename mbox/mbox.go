@@ -408,16 +408,18 @@ func CountMessages(path string, progressCallback func(bytesRead, totalSize int64
 
 // progressTrackingReader wraps an io.Reader and reports progress via callback.
 type progressTrackingReader struct {
-	r        io.Reader
-	total    int64
-	read     int64
-	callback func(read, total int64)
+	r         io.Reader
+	total     int64
+	read      int64
+	readCount int
+	callback  func(read, total int64)
 }
 
 func (p *progressTrackingReader) Read(buf []byte) (int, error) {
 	n, err := p.r.Read(buf)
 	p.read += int64(n)
-	if p.callback != nil {
+	p.readCount++
+	if p.callback != nil && p.readCount%100 == 0 {
 		p.callback(p.read, p.total)
 	}
 	return n, err
