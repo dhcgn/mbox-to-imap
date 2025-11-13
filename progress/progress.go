@@ -2,6 +2,7 @@ package progress
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -174,4 +175,65 @@ func (pr *ProgressReporter) collectStats(ctx context.Context, events <-chan stat
 	}
 
 	return nil
+}
+
+// CountProgress manages a progress bar for counting messages in mbox file.
+type CountProgress struct {
+	pb      *pterm.ProgressbarPrinter
+	mu      sync.Mutex
+	started time.Time
+}
+
+// NewCountProgress creates a progress bar for message counting using file size.
+func NewCountProgress() *CountProgress {
+	cp := &CountProgress{
+		started: time.Now(),
+	}
+
+	pb, _ := pterm.DefaultProgressbar.
+		WithTotal(100).
+		WithTitle("Counting messages in mbox file").
+		Start()
+
+	cp.pb = pb
+	return cp
+}
+
+// Update is called with bytes read and total size during counting.
+func (cp *CountProgress) Update(bytesRead, totalSize int64) {
+	if cp.pb == nil {
+		return
+	}
+
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	// Calculate percentage
+	if totalSize > 0 {
+		percentage := int((bytesRead * 100) / totalSize)
+		if percentage > 100 {
+			percentage = 100
+		}
+		cp.pb.Current = percentage
+
+		// Update title with MB read and percentage
+		mbRead := float64(bytesRead) / 1024 / 1024
+		mbTotal := float64(totalSize) / 1024 / 1024
+		cp.pb.UpdateTitle(fmt.Sprintf("Counting messages: %.1f/%.1f MB (%d%%)", mbRead, mbTotal, percentage))
+	}
+}
+
+// Stop finalizes the counting progress bar.
+func (cp *CountProgress) Stop() {
+	if cp.pb == nil {
+		return
+	}
+
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	duration := time.Since(cp.started)
+	cp.pb.Current = 100
+	cp.pb.Stop()
+	pterm.Success.Printf("Message counting complete in %v\n", duration)
 }

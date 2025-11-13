@@ -63,7 +63,21 @@ func init() {
 func run(cfg config.Config, logger *slog.Logger) error {
 	// Count total messages in mbox file first
 	logger.Debug("counting messages in mbox file", "path", cfg.MboxPath)
-	totalMessages, err := mbox.CountMessages(cfg.MboxPath)
+
+	// Show progress when counting messages (info level only)
+	var countProgress *progress.CountProgress
+	var progressCallback func(int64, int64)
+	if cfg.LogLevel == "info" {
+		countProgress = progress.NewCountProgress()
+		progressCallback = countProgress.Update
+	}
+
+	totalMessages, err := mbox.CountMessages(cfg.MboxPath, progressCallback)
+
+	if countProgress != nil {
+		countProgress.Stop()
+	}
+
 	if err != nil {
 		return fmt.Errorf("count messages: %w", err)
 	}

@@ -349,8 +349,11 @@ func Read(path string, callback func(m *MboxMessage) error) error {
 }
 
 // CountMessages counts the total number of messages in an mbox file.
-func CountMessages(path string) (int, error) {
+// If progressCallback is provided, it will be called with (bytesRead, totalSize) during counting.
+func CountMessages(path string, progressCallback func(bytesRead, totalSize int64)) (int, error) {
 	var reader *mboxlib.Reader
+	var fileSize int64
+	var progressReader io.Reader
 
 	if mbox_test_data_using {
 		reader = mboxlib.NewReader(bytes.NewReader(mbox_test_data))
@@ -360,7 +363,25 @@ func CountMessages(path string) (int, error) {
 			return 0, fmt.Errorf("open mbox: %w", err)
 		}
 		defer file.Close()
-		reader = mboxlib.NewReader(file)
+
+		// Get file size for progress tracking
+		stat, err := file.Stat()
+		if err != nil {
+			return 0, fmt.Errorf("stat mbox: %w", err)
+		}
+		fileSize = stat.Size()
+
+		// Wrap file reader with progress tracking if callback provided
+		if progressCallback != nil {
+			progressReader = &progressTrackingReader{
+				r:        file,
+				total:    fileSize,
+				callback: progressCallback,
+			}
+			reader = mboxlib.NewReader(progressReader)
+		} else {
+			reader = mboxlib.NewReader(file)
+		}
 	}
 
 	count := 0
@@ -383,4 +404,21 @@ func CountMessages(path string) (int, error) {
 
 		count++
 	}
+}
+
+// progressTrackingReader wraps an io.Reader and reports progress via callback.
+type progressTrackingReader struct {
+	r        io.Reader
+	total    int64
+	read     int64
+	callback func(read, total int64)
+}
+
+func (p *progressTrackingReader) Read(buf []byte) (int, error) {
+	n, err := p.r.Read(buf)
+	p.read += int64(n)
+	if p.callback != nil {
+		p.callback(p.read, p.total)
+	}
+	return n, err
 }
