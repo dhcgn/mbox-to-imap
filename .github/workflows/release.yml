@@ -25,13 +25,21 @@ jobs:
       env:
         GOOS: windows
         GOARCH: amd64
-      run: go build -o mbox-to-imap-windows-amd64.exe
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        COMMIT=$(git rev-parse --short HEAD)
+        BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+        go build -ldflags "-X main.Version=$VERSION -X main.CommitID=$COMMIT -X main.BuildTime=$BUILD_TIME" -o mbox-to-imap-windows-amd64.exe
 
     - name: Build Linux
       env:
          GOOS: linux
          GOARCH: amd64
-      run: go build -o mbox-to-imap-linux-amd64
+      run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          COMMIT=$(git rev-parse --short HEAD)
+          BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
+          go build -ldflags "-X main.Version=$VERSION -X main.CommitID=$COMMIT -X main.BuildTime=$BUILD_TIME" -o mbox-to-imap-linux-amd64
 
     - name: Release
       uses: softprops/action-gh-release@v2
