@@ -3,19 +3,25 @@ package cmd
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/dhcgn/mbox-to-imap/filter"
 	"github.com/dhcgn/mbox-to-imap/mbox"
 	"github.com/dhcgn/mbox-to-imap/stats"
 	"github.com/spf13/cobra"
 )
 
 var (
-	reportDir string
+	reportDir     string
+	includeHeader []string
+	includeBody   []string
+	excludeHeader []string
+	excludeBody   []string
 )
 
 var mboxStatsCmd = &cobra.Command{
@@ -27,6 +33,25 @@ var mboxStatsCmd = &cobra.Command{
 
 		fmt.Println("Analyzing mbox file:", mboxPath)
 
+		// Validate filter flags
+		includeActive := len(includeHeader) > 0 || len(includeBody) > 0
+		excludeActive := len(excludeHeader) > 0 || len(excludeBody) > 0
+		if includeActive && excludeActive {
+			return fmt.Errorf("include and exclude flags are mutually exclusive")
+		}
+
+		// Create filter
+		filterOpts := filter.Options{
+			IncludeHeader: includeHeader,
+			IncludeBody:   includeBody,
+			ExcludeHeader: excludeHeader,
+			ExcludeBody:   excludeBody,
+		}
+		f, err := filter.New(filterOpts)
+		if err != nil {
+			return fmt.Errorf("create filter: %w", err)
+		}
+
 		counter := make(map[string]map[string]int)
 		headersToTrack := []string{"Delivered-To", "Subject", "From", "To"}
 		for _, h := range headersToTrack {
@@ -34,10 +59,11 @@ var mboxStatsCmd = &cobra.Command{
 		}
 
 		messageCount := 0
+		skippedCount := 0
 		printStats := func() {
 			// ANSI escape code to clear screen and move cursor to top-left
 			fmt.Print("\033[H\033[2J")
-			fmt.Printf("Processed %d messages...\n\n", messageCount)
+			fmt.Printf("Processed %d messages (skipped %d by filters)...\n\n", messageCount, skippedCount)
 			for _, header := range headersToTrack {
 				fmt.Printf("Top 10 %s:\n", header)
 				stats.PrettyPrintTop(counter[header], 10)
@@ -45,7 +71,17 @@ var mboxStatsCmd = &cobra.Command{
 			}
 		}
 
-		err := mbox.Read(mboxPath, func(m *mbox.MboxMessage) error {
+		err = mbox.Read(mboxPath, func(m *mbox.MboxMessage) error {
+			// Apply filter
+			headerBytes, readErr := io.ReadAll(strings.NewReader(formatHeaders(m.Headers)))
+			if readErr != nil {
+				return readErr
+			}
+			if !f.Allows(headerBytes, m.Body) {
+				skippedCount++
+				return nil
+			}
+
 			messageCount++
 			for _, headerName := range headersToTrack {
 				if value := m.Headers.Get(headerName); value != "" {
@@ -80,6 +116,10 @@ var mboxStatsCmd = &cobra.Command{
 
 func init() {
 	mboxStatsCmd.Flags().StringVarP(&reportDir, "output", "o", ".", "Output directory for CSV reports")
+	mboxStatsCmd.Flags().StringArrayVar(&includeHeader, "include-header", nil, "Regex allow-list applied to message headers (mutually exclusive with exclude flags)")
+	mboxStatsCmd.Flags().StringArrayVar(&includeBody, "include-body", nil, "Regex allow-list applied to message bodies (mutually exclusive with exclude flags)")
+	mboxStatsCmd.Flags().StringArrayVar(&excludeHeader, "exclude-header", nil, "Regex block-list applied to message headers (mutually exclusive with include flags)")
+	mboxStatsCmd.Flags().StringArrayVar(&excludeBody, "exclude-body", nil, "Regex block-list applied to message bodies (mutually exclusive with include flags)")
 	rootCmd.AddCommand(mboxStatsCmd)
 }
 
@@ -152,4 +192,17 @@ func normalizeHeaderName(header string) string {
 	name = strings.ReplaceAll(name, "-", "_")
 	name = strings.ReplaceAll(name, " ", "_")
 	return name
+}
+
+func formatHeaders(headers map[string][]string) string {
+	var sb strings.Builder
+	for key, values := range headers {
+		for _, value := range values {
+			sb.WriteString(key)
+			sb.WriteString(": ")
+			sb.WriteString(value)
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }

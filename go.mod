@@ -5,6 +5,7 @@ go 1.24.5
 require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.7
 	github.com/emersion/go-mbox v1.0.4
+	github.com/pterm/pterm v0.12.82
 	github.com/spf13/cobra v1.10.1
 )
 
@@ -19,7 +20,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/pterm/pterm v0.12.82 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect

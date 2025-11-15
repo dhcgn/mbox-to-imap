@@ -39,7 +39,11 @@
             "program": "${workspaceFolder}/main.go",
             "args": [
                 "mbox-stats",
-                "test_data/All mail Including Spam and Trash.mbox"
+                "test_data/All mail Including Spam and Trash.mbox",
+                "--exclude-header",
+                "\nSubject: Test 003\n",
+                "--exclude-header",
+                "\nFrom: .*.@facebookmail.com.*.\n"
             ]
         }
     ]

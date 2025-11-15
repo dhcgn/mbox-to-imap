@@ -11,19 +11,18 @@ import (
 	"log/slog"
 	"net/mail"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
 	mboxlib "github.com/emersion/go-mbox"
 
+	"github.com/dhcgn/mbox-to-imap/filter"
 	"github.com/dhcgn/mbox-to-imap/model"
 	"github.com/dhcgn/mbox-to-imap/runner"
 )
 
 var (
-	ErrMessageIDMissing   = errors.New("mbox message missing Message-Id header")
-	errFilterModeConflict = errors.New("include and exclude filters are mutually exclusive")
+	ErrMessageIDMissing = errors.New("mbox message missing Message-Id header")
 )
 
 type Options struct {
@@ -44,56 +43,31 @@ func NewReader(opts Options, logger *slog.Logger) (Reader, error) {
 		return nil, fmt.Errorf("mbox path is empty")
 	}
 
-	includeHeader, err := compilePatterns(opts.IncludeHeader)
-	if err != nil {
-		return nil, fmt.Errorf("compile include-header pattern: %w", err)
-	}
-	includeBody, err := compilePatterns(opts.IncludeBody)
-	if err != nil {
-		return nil, fmt.Errorf("compile include-body pattern: %w", err)
-	}
-	excludeHeader, err := compilePatterns(opts.ExcludeHeader)
-	if err != nil {
-		return nil, fmt.Errorf("compile exclude-header pattern: %w", err)
-	}
-	excludeBody, err := compilePatterns(opts.ExcludeBody)
-	if err != nil {
-		return nil, fmt.Errorf("compile exclude-body pattern: %w", err)
+	filterOpts := filter.Options{
+		IncludeHeader: opts.IncludeHeader,
+		IncludeBody:   opts.IncludeBody,
+		ExcludeHeader: opts.ExcludeHeader,
+		ExcludeBody:   opts.ExcludeBody,
 	}
 
-	includeActive := len(includeHeader) > 0 || len(includeBody) > 0
-	excludeActive := len(excludeHeader) > 0 || len(excludeBody) > 0
-	if includeActive && excludeActive {
-		return nil, errFilterModeConflict
+	f, err := filter.New(filterOpts)
+	if err != nil {
+		return nil, err
 	}
 
 	reader := &fileReader{
-		path:           path,
-		logger:         logger,
-		includeMode:    includeActive,
-		excludeMode:    excludeActive,
-		includeHeader:  includeHeader,
-		includeBody:    includeBody,
-		excludeHeader:  excludeHeader,
-		excludeBody:    excludeBody,
-		needHeaderText: len(includeHeader) > 0 || len(excludeHeader) > 0,
-		needBodyText:   len(includeBody) > 0 || len(excludeBody) > 0,
+		path:   path,
+		logger: logger,
+		filter: f,
 	}
 
 	return reader, nil
 }
 
 type fileReader struct {
-	path           string
-	logger         *slog.Logger
-	includeMode    bool
-	excludeMode    bool
-	includeHeader  []*regexp.Regexp
-	includeBody    []*regexp.Regexp
-	excludeHeader  []*regexp.Regexp
-	excludeBody    []*regexp.Regexp
-	needHeaderText bool
-	needBodyText   bool
+	path   string
+	logger *slog.Logger
+	filter *filter.Filter
 }
 
 func (f *fileReader) Stream(ctx context.Context, out chan<- model.Envelope) error {
@@ -128,8 +102,8 @@ func (f *fileReader) Stream(ctx context.Context, out chan<- model.Envelope) erro
 			return f.emitError(ctx, out, fmt.Errorf("message %d read: %w", idx, err))
 		}
 
-		header, body := splitRawMessage(raw)
-		if !f.allows(header, body) {
+		header, body := filter.SplitRawMessage(raw)
+		if !f.filter.Allows(header, body) {
 			continue
 		}
 
@@ -152,29 +126,6 @@ func (f *fileReader) Stream(ctx context.Context, out chan<- model.Envelope) erro
 	}
 }
 
-func (f *fileReader) allows(header, body []byte) bool {
-	var headerText, bodyText string
-	if f.needHeaderText {
-		headerText = string(header)
-	}
-	if f.needBodyText {
-		bodyText = string(body)
-	}
-
-	if f.includeMode {
-		matched := matchAny(f.includeHeader, headerText) || matchAny(f.includeBody, bodyText)
-		return matched
-	}
-
-	if f.excludeMode {
-		if matchAny(f.excludeHeader, headerText) || matchAny(f.excludeBody, bodyText) {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (f *fileReader) emitError(ctx context.Context, out chan<- model.Envelope, err error) error {
 	if f.logger != nil {
 		f.logger.Error("mbox stream error", "path", f.path, "err", err)
@@ -192,49 +143,6 @@ func (f *fileReader) emitEnvelope(ctx context.Context, out chan<- model.Envelope
 	case out <- env:
 		return nil
 	}
-}
-
-func compilePatterns(patterns []string) ([]*regexp.Regexp, error) {
-	compiled := make([]*regexp.Regexp, 0, len(patterns))
-	for _, pattern := range patterns {
-		pattern = strings.TrimSpace(pattern)
-		if pattern == "" {
-			continue
-		}
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			return nil, fmt.Errorf("compile %q: %w", pattern, err)
-		}
-		compiled = append(compiled, re)
-	}
-	return compiled, nil
-}
-
-func matchAny(patterns []*regexp.Regexp, text string) bool {
-	if len(patterns) == 0 {
-		return false
-	}
-	for _, re := range patterns {
-		if re.MatchString(text) {
-			return true
-		}
-	}
-	return false
-}
-
-func splitRawMessage(raw []byte) (header, body []byte) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-
-	if idx := bytes.Index(raw, []byte("\r\n\r\n")); idx >= 0 {
-		return raw[:idx], raw[idx+4:]
-	}
-	if idx := bytes.Index(raw, []byte("\n\n")); idx >= 0 {
-		return raw[:idx], raw[idx+2:]
-	}
-
-	return raw, nil
 }
 
 func parseMail(raw []byte) (model.Message, error) {
