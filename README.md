@@ -2,45 +2,63 @@
 
 **mbox-to-imap** is a command-line tool written in **Go** for importing emails from an `mbox` file into an IMAP mailbox.  
 It supports **repeatable, incremental synchronization** — only new, unsynchronized messages are transferred when run multiple times.  
-It also includes a **strict filtering system** (include **or** exclude) and an enhanced **dry-run** mode with rich stats.
+It also includes a **strct filtering system** and an **dry-run** mode with  stats.
 
 Ideal for importing **Google Takeout** archives or migrating email data between providers.
+
 
 ---
 
 ## 🚀 Overview
 
-Use `mbox-to-imap` to transfer emails from `.mbox` files (e.g., from Google Takeout) into another IMAP-compatible mailbox.
+`mbox-to-imap` provides two main commands:
 
-Core features:
+1. **`mbox-to-imap`** - Import messages from `.mbox` files into an IMAP mailbox
+2. **`mbox-stats`** - Analyze `.mbox` files and generate statistics without uploading
+
+### Use Case: Google Takeout Migration
+
+As a Google user, you can request an export of your entire mailbox from [Google Takeout](https://takeout.google.com/) in `.mbox` format. However, **there is no easy built-in option to upload this file to your new email provider**. This tool was specifically programmed to solve that problem — allowing you to migrate your Google Takeout mail archives to any IMAP-compatible email service.
+
+### Core Features
+
 - Reliable `.mbox` → IMAP import
-- Incremental sync (idempotent)
+- Incremental sync (idempotent) with state tracking
 - Stop and resume safely
 - **Filtering via include *or* exclude (mutually exclusive) with regex rules**
-- **Dry-run analysis** with counts and top senders/recipients/subjects/subject-word histogram
+- **Dry-run analysis** with counts and statistics
+- **Standalone statistics tool** for mbox file analysis
+- Generates CSV reports for senders, recipients, subjects
 
 ---
 
 ## ⚙️ Features
 
-- **Incremental synchronization:** Avoid duplicate uploads
-- **Graceful resume:** Continue after interruption
+- **Incremental synchronization:** Avoid duplicate uploads using `Message-ID` tracking
+- **Graceful resume:** Continue after interruption via state files (`processed.jsonl`)
 - **Allow/deny filters:** Include-only (allow list) *or* exclude-some (block list)
-- **Dry-run statistics:** Preview and verify filters; always outputs a stats summary
-- **Cross-platform:** Runs on Windows, macOS, Linux
-- **Lightweight:** No database, uses a local state file to track transferred messages.
+- **Dry-run mode:** Preview sync operations with statistics
+- **Statistics analysis:** Generate detailed reports without uploading
+- **Cross-platform:** Pre-compiled releases for Linux and Windows
+- **Lightweight:** No database, uses local JSONL state files to track transferred messages
 
 ---
 
-## 🧩 Installation
+## 📦 Installation
 
-You need **Go 1.20+**.
+### Pre-compiled Releases (Recommended)
+
+Download pre-compiled binaries for **Linux** and **Windows** from the [Releases](https://github.com/dhcgn/mbox-to-imap/releases) page.
+
+### Build from Source
+
+Requires **Go 1.20+**.
 
 ```bash
-git clone https://example.org/your-org/mbox-to-imap.git
+git clone https://github.com/dhcgn/mbox-to-imap.git
 cd mbox-to-imap
-go build -o mbox-to-imap ./cmd/mbox-to-imap
-````
+go build -o mbox-to-imap
+```
 
 ---
 
@@ -105,27 +123,88 @@ project(120), invoice(85), april(50), weekly(48), sync(45), ...
 
 ## 🔧 Command-Line Options
 
+### `mbox-to-imap` Command
+
 | Flag                     | Description                                          | Default / Required      |
 | ------------------------ | ---------------------------------------------------- | ----------------------- |
 | `--mbox`                 | Path to `.mbox` file                                 | **required**            |
 | `--imap-host`            | IMAP server hostname                                 | **required**            |
 | `--imap-port`            | IMAP port                                            | `993`                   |
 | `--imap-user`            | IMAP username                                        | **required**            |
-| `--imap-pass`            | IMAP password (or use env var)                       | **required**            |
+| `--imap-pass`            | IMAP password (or use `IMAP_PASS` env var)          | **required**            |
 | `--use-tls`              | Use TLS for IMAP connection                          | `true`                  |
-| `--insecure-skip-verify` | Skip TLS certificate validation                      | *not recommended*       |
+| `--insecure-skip-verify` | Skip TLS certificate validation                      | `false`                 |
 | `--target-folder`        | Target IMAP folder for imported mail                 | `INBOX`                 |
 | `--state-dir`            | Directory for state files                            | `~/.mbox-to-imap/state` |
-| `--concurrency`          | Number of parallel uploads                           | `1`                     |
 | `--dry-run`              | Simulate sync and print stats (no changes)           | `false`                 |
 | `--log-level`            | Logging verbosity (`debug`, `info`, `warn`, `error`) | `info`                  |
+| `--log-dir`              | Directory for log files (optional)                   | (none)                  |
+
+### `mbox-stats` Command
+
+| Flag             | Description                                                    | Default / Required |
+| ---------------- | -------------------------------------------------------------- | ------------------ |
+| (positional)     | Path to `.mbox` file                                           | **required**       |
+| `--output`, `-o` | Output directory for CSV reports                               | `.` (current dir)  |
+| `--top`, `-t`    | Number of top items to display in statistics                   | `10`               |
+
+<details>
+<summary><b>View full help output</b></summary>
+
+```
+$ mbox-to-imap mbox-to-imap --help
+Import messages from mbox archives into an IMAP mailbox
+
+Usage:
+  mbox-to-imap mbox-to-imap [flags]
+
+Flags:
+      --dry-run                      Simulate the sync and emit stats without uploading
+      --exclude-body stringArray     Regex block-list applied to message bodies (mutually exclusive with include flags)
+      --exclude-header stringArray   Regex block-list applied to message headers (mutually exclusive with include flags)
+  -h, --help                         help for mbox-to-imap
+      --imap-host string             IMAP server hostname
+      --imap-pass string             IMAP password (falls back to IMAP_PASS env var)
+      --imap-port int                IMAP server port (default 993)
+      --imap-user string             IMAP username
+      --include-body stringArray     Regex allow-list applied to message bodies (mutually exclusive with exclude flags)
+      --include-header stringArray   Regex allow-list applied to message headers (mutually exclusive with exclude flags)
+      --insecure-skip-verify         Skip TLS certificate verification (not recommended)
+      --log-dir string               Optional directory where log files will be written
+      --log-level string             Logging level: debug, info, warn, error (default "info")
+      --mbox string                  Path to the .mbox file to import
+      --state-dir string             Directory for incremental sync state files (default "/home/d/.mbox-to-imap/state")
+      --target-folder string         Target IMAP folder for imported mail (default "INBOX")
+      --use-tls                      Use TLS for the IMAP connection (default true)
+```
+
+```
+$ mbox-to-imap mbox-stats --help
+Analyse the mbox file and show statistics
+
+Usage:
+  mbox-to-imap mbox-stats [mbox file] [flags]
+
+Flags:
+      --exclude-body stringArray     Regex block-list applied to message bodies (mutually exclusive with include flags)
+      --exclude-header stringArray   Regex block-list applied to message headers (mutually exclusive with include flags)
+  -h, --help                         help for mbox-stats
+      --include-body stringArray     Regex allow-list applied to message bodies (mutually exclusive with exclude flags)
+      --include-header stringArray   Regex allow-list applied to message headers (mutually exclusive with exclude flags)
+  -o, --output string                Output directory for CSV reports (default ".")
+  -t, --top int                      Number of top items to display in statistics (default 10)
+```
+
+</details>
 
 ### Filtering (mutually exclusive modes)
 
+Both `mbox-to-imap` and `mbox-stats` commands support the same filtering options:
+
 > You can use **include** *or* **exclude**, **not both**.
 > All filter values are **regex**.
-> “Header” checks search across the raw header block (e.g., `From:`, `To:`, `Cc:`, `Subject:` etc.).
-> “Body” checks search the message body text.
+> "Header" checks search across the raw header block (e.g., `From:`, `To:`, `Cc:`, `Subject:` etc.).
+> "Body" checks search the message body text.
 
 **Include-only (allow list):** Only messages matching at least one include rule are considered; all others are **dropped**.
 
@@ -137,7 +216,7 @@ project(120), invoice(85), april(50), weekly(48), sync(45), ...
 * `--exclude-header "<regex>"`
 * `--exclude-body "<regex>"`
 
-You may provide each flag multiple times to add multiple rules (implementation-dependent; or use `|` in a single regex).
+You may provide each flag multiple times to add multiple rules. Use `\n` to match newlines in headers.
 
 ---
 
@@ -145,10 +224,10 @@ You may provide each flag multiple times to add multiple rules (implementation-d
 
 ### Allow list (include-only)
 
-Only include mails from a domain **and** with “Project X” in the subject or body:
+Only include mails from a domain **and** with "Project X" in the subject or body:
 
 ```bash
-./mbox-to-imap \
+./mbox-to-imap mbox-to-imap \
   --mbox mails.mbox \
   --imap-host imap.server.com \
   --imap-user user@domain.com \
@@ -160,16 +239,35 @@ Only include mails from a domain **and** with “Project X” in the subject or 
 
 ### Block list (exclude-some)
 
-Exclude newsletters and mails with “unsubscribe” in the body:
+Exclude newsletters and mails with "unsubscribe" in the body:
 
 ```bash
-./mbox-to-imap \
+./mbox-to-imap mbox-to-imap \
   --mbox mails.mbox \
   --imap-host imap.server.com \
   --imap-user user@domain.com \
   --imap-pass "$IMAP_PASS" \
   --exclude-header "Subject:\s*.*(newsletter|promo).*" \
   --exclude-body "(?i)unsubscribe"
+```
+
+### Advanced multi-filter example
+
+Exclude various automated notifications, alerts, and unwanted senders:
+
+```bash
+./mbox-to-imap mbox-to-imap \
+  --mbox "archive.mbox" \
+  --imap-host imap.provider.com \
+  --imap-user user@example.com \
+  --imap-pass "$IMAP_PASS" \
+  --target-folder "INBOX/Imported" \
+  --exclude-header '\nTo: .*notifications@noreply.github.com.*\n' \
+  --exclude-header '\nFrom: .*alerts-noreply@google.com.*\n' \
+  --exclude-header '\nFrom: .*jobalerts-noreply@linkedin.com.*\n' \
+  --exclude-header '\nSubject: Smart Home Alert.*\n' \
+  --exclude-header '\nSubject: .*Newsletter.*\n' \
+  --exclude-header '\nDelivered-To: spam-folder@example.com\n'
 ```
 
 > **Rule semantics:**
@@ -181,15 +279,24 @@ Exclude newsletters and mails with “unsubscribe” in the body:
 
 ## 🔁 Incremental Synchronization
 
-* Each `.mbox` sync uses a **state file** to track transferred messages.
+* Each `.mbox` sync uses a **state file** (`processed.jsonl`) to track transferred messages.
 * Already-synced messages (by `Message-ID`) are skipped.
 * If the tool is stopped mid-transfer, it resumes from the last checkpoint.
 
 Mechanism:
 
 1. Identify messages by `Message-ID`.
-2. Record successfully transferred message IDs in a state file.
+2. Record successfully transferred message IDs in `processed.jsonl` (one JSON object per line).
 3. On subsequent runs, skip messages whose IDs are in the state file.
+
+**State file format** (`processed.jsonl`):
+```json
+{"hash":"nEpZ/rndGF66KIhZ8NtxGtvL6wE1QKqaxt+4Kncm0oU=","message_id":"ff64b0d3-7c62-4b9b-9aa4-45619ed0d2ac@facebookmail.com"}
+```
+
+Each line contains:
+- `hash`: SHA-256 hash of the message content
+- `message_id`: Original Message-ID header from the email
 
 ---
 
@@ -197,12 +304,18 @@ Mechanism:
 
 * `--dry-run` **always** produces a stats summary:
 
-  * Total scanned / matched / skipped / would-upload
-  * **Top 10 senders (From)**
-  * **Top 10 recipients (To)**
-  * **Top 10 subjects**
-  * **Top 100 subject words** (space-separated tokenization)
+  * Total scanned / enqueued / uploaded / dry-run uploaded
+  * Duplicates (skipped)
+  * Errors
+  * Duration
+* `mbox-stats` generates detailed reports:
+  * Top senders (From)
+  * Top recipients (To, Delivered-To)
+  * Top subjects
+  * CSV exports for all statistics
+  * Filter hit statistics
 * `--log-level debug` enables message-by-message tracing
+* `--log-level info` shows progress bars and summary statistics
 
 ---
 
@@ -213,7 +326,7 @@ Mechanism:
 
   ```bash
   export IMAP_PASS="secret"
-  ./mbox-to-imap --imap-pass "$IMAP_PASS"
+  ./mbox-to-imap mbox-to-imap --imap-pass "$IMAP_PASS"
   ```
 * Keep state files private (may contain metadata).
 * Avoid `--insecure-skip-verify` except for debugging in trusted environments.
@@ -222,9 +335,16 @@ Mechanism:
 
 ## ⚠️ Disclaimer
 
-This software is provided **“as is”** without any warranty.
-Use at your own risk — the authors assume **no liability** for any damage or data loss.
-Always test with a small sample before large migrations.
+**This software is provided "as is" without warranty of any kind, express or implied.**
+
+There is **NO WARRANTY WHATSOEVER** when using this tool. The authors and contributors make no guarantees about its functionality, reliability, or suitability for any purpose.
+
+Use at your own risk — the authors assume **no liability** for any damage, data loss, corruption, or other issues that may arise from using this software.
+
+**Always:**
+- Back up your `.mbox` files before processing
+- Test with a small sample mailbox before large migrations
+- Verify results after import
 
 ---
 
@@ -240,7 +360,14 @@ go test ./...
 Please format code (`go fmt`) and lint before submitting PRs.
 
 ---
+## Usefull cli linux commands handling google takeout
+
+```bash
+echo "Count all mails ..."
+MBOX="test_data/All mail Including Spam and Trash.mbox"
+rg -a "^Delivered-To: " "$MBOX" | wc -l
+```
 
 ## 🪪 License
 
-MIT License — see `LICENSE`.
+MIT License
