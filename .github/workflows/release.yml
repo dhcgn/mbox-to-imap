@@ -1,0 +1,43 @@
+name: Go Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history and tags
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24'
+
+    - name: Build Windows
+      env:
+        GOOS: windows
+        GOARCH: amd64
+      run: go build -o mbox-to-imap-windows-amd64.exe
+
+    - name: Build Linux
+      env:
+         GOOS: linux
+         GOARCH: amd64
+      run: go build -o mbox-to-imap-linux-amd64
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          mbox-to-imap-windows-amd64.exe
+          mbox-to-imap-linux-amd64
+          
