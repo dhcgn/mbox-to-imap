@@ -25,6 +25,11 @@ type Filter struct {
 	excludeBody    []*regexp.Regexp
 	needHeaderText bool
 	needBodyText   bool
+	// Tracking
+	includeHeaderHits map[string]int
+	includeBodyHits   map[string]int
+	excludeHeaderHits map[string]int
+	excludeBodyHits   map[string]int
 }
 
 // New creates a new Filter from the provided options.
@@ -53,14 +58,18 @@ func New(opts Options) (*Filter, error) {
 	}
 
 	return &Filter{
-		includeMode:    includeActive,
-		excludeMode:    excludeActive,
-		includeHeader:  includeHeader,
-		includeBody:    includeBody,
-		excludeHeader:  excludeHeader,
-		excludeBody:    excludeBody,
-		needHeaderText: len(includeHeader) > 0 || len(excludeHeader) > 0,
-		needBodyText:   len(includeBody) > 0 || len(excludeBody) > 0,
+		includeMode:       includeActive,
+		excludeMode:       excludeActive,
+		includeHeader:     includeHeader,
+		includeBody:       includeBody,
+		excludeHeader:     excludeHeader,
+		excludeBody:       excludeBody,
+		needHeaderText:    len(includeHeader) > 0 || len(excludeHeader) > 0,
+		needBodyText:      len(includeBody) > 0 || len(excludeBody) > 0,
+		includeHeaderHits: make(map[string]int),
+		includeBodyHits:   make(map[string]int),
+		excludeHeaderHits: make(map[string]int),
+		excludeBodyHits:   make(map[string]int),
 	}, nil
 }
 
@@ -75,17 +84,71 @@ func (f *Filter) Allows(header, body []byte) bool {
 	}
 
 	if f.includeMode {
-		matched := matchAny(f.includeHeader, headerText) || matchAny(f.includeBody, bodyText)
+		matched := f.matchAnyWithTracking(f.includeHeader, headerText, f.includeHeaderHits) ||
+			f.matchAnyWithTracking(f.includeBody, bodyText, f.includeBodyHits)
 		return matched
 	}
 
 	if f.excludeMode {
-		if matchAny(f.excludeHeader, headerText) || matchAny(f.excludeBody, bodyText) {
+		if f.matchAnyWithTracking(f.excludeHeader, headerText, f.excludeHeaderHits) ||
+			f.matchAnyWithTracking(f.excludeBody, bodyText, f.excludeBodyHits) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// matchAnyWithTracking checks if any pattern matches and tracks which ones hit.
+func (f *Filter) matchAnyWithTracking(patterns []*regexp.Regexp, text string, hitCounter map[string]int) bool {
+	if len(patterns) == 0 {
+		return false
+	}
+	matched := false
+	for _, re := range patterns {
+		if re.MatchString(text) {
+			hitCounter[re.String()]++
+			matched = true
+		}
+	}
+	return matched
+}
+
+// GetStats returns the filter hit statistics.
+type FilterStats struct {
+	IncludeHeaderPatterns []string
+	IncludeBodyPatterns   []string
+	ExcludeHeaderPatterns []string
+	ExcludeBodyPatterns   []string
+	IncludeHeaderHits     map[string]int
+	IncludeBodyHits       map[string]int
+	ExcludeHeaderHits     map[string]int
+	ExcludeBodyHits       map[string]int
+}
+
+func (f *Filter) GetStats() FilterStats {
+	stats := FilterStats{
+		IncludeHeaderHits: f.includeHeaderHits,
+		IncludeBodyHits:   f.includeBodyHits,
+		ExcludeHeaderHits: f.excludeHeaderHits,
+		ExcludeBodyHits:   f.excludeBodyHits,
+	}
+
+	// Collect all patterns
+	for _, re := range f.includeHeader {
+		stats.IncludeHeaderPatterns = append(stats.IncludeHeaderPatterns, re.String())
+	}
+	for _, re := range f.includeBody {
+		stats.IncludeBodyPatterns = append(stats.IncludeBodyPatterns, re.String())
+	}
+	for _, re := range f.excludeHeader {
+		stats.ExcludeHeaderPatterns = append(stats.ExcludeHeaderPatterns, re.String())
+	}
+	for _, re := range f.excludeBody {
+		stats.ExcludeBodyPatterns = append(stats.ExcludeBodyPatterns, re.String())
+	}
+
+	return stats
 }
 
 // SplitRawMessage splits a raw email message into header and body parts.

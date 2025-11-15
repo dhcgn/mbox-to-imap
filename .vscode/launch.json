@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Dry Run (local mbox)",
+            "name": "Dry Run log debug (local mbox)",
             "type": "go",
             "request": "launch",
             "mode": "auto",
@@ -28,7 +28,46 @@
                 "--log-dir",
                 ".",
                 "--state-dir",
-                "."
+                ".",
+                "--exclude-header",
+                "\nSubject: Test 003\n",
+                "--exclude-header",
+                "\nFrom: .*.@facebookmail.com.*.\n",
+                "--exclude-header",
+                "\nFrom: NOT_FOUND\n"
+            ]
+        },
+                {
+            "name": "Dry Run log info (local mbox)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/main.go",
+            "args": [
+                "mbox-to-imap",
+                "--dry-run",
+                "--mbox",
+                "test_data/All mail Including Spam and Trash.mbox",
+                "--imap-host",
+                "127.0.0.1",
+                "--imap-user",
+                "test",
+                "--imap-pass",
+                "qwert",
+                "--target-folder",
+                "DEBUG",
+                "--log-level",
+                "info",
+                "--log-dir",
+                ".",
+                "--state-dir",
+                ".",
+                "--exclude-header",
+                "\nSubject: Test 003\n",
+                "--exclude-header",
+                "\nFrom: .*.@facebookmail.com.*.\n",
+                "--exclude-header",
+                "\nFrom: NOT_FOUND\n"
             ]
         },
         {
@@ -43,7 +82,9 @@
                 "--exclude-header",
                 "\nSubject: Test 003\n",
                 "--exclude-header",
-                "\nFrom: .*.@facebookmail.com.*.\n"
+                "\nFrom: .*.@facebookmail.com.*.\n",
+                "--exclude-header",
+                "\nFrom: NOT_FOUND\n"
             ]
         }
     ]

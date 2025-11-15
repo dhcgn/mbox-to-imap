@@ -7,6 +7,7 @@ go run main.go  mbox-to-imap \
 	--imap-user test \
 	--imap-pass 'qwert' \
 	--target-folder DEBUG \
-	--log-level debug \
+	--log-level info \
 	--log-dir "debug_scripte_output" \
-	--state-dir "debug_scripte_output"
+	--state-dir "debug_scripte_output" \
+	--exclude-header '\nSubject: .*.Google Account\n'

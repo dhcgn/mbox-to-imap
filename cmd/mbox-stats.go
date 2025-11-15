@@ -18,6 +18,7 @@ import (
 
 var (
 	reportDir     string
+	topN          int
 	includeHeader []string
 	includeBody   []string
 	excludeHeader []string
@@ -63,10 +64,53 @@ var mboxStatsCmd = &cobra.Command{
 		printStats := func() {
 			// ANSI escape code to clear screen and move cursor to top-left
 			fmt.Print("\033[H\033[2J")
-			fmt.Printf("Processed %d messages (skipped %d by filters)...\n\n", messageCount, skippedCount)
+			totalMessages := messageCount + skippedCount
+			var filterPercent float64
+			if totalMessages > 0 {
+				filterPercent = float64(skippedCount) / float64(totalMessages) * 100
+			}
+			fmt.Printf("Processed %d messages (skipped %d by filters, %.2f%%)...\n\n", messageCount, skippedCount, filterPercent)
+
+			// Print filter statistics
+			filterStats := f.GetStats()
+			hasFilterStats := false
+
+			if len(filterStats.IncludeHeaderPatterns) > 0 {
+				hasFilterStats = true
+				fmt.Println("Include Header Filters:")
+				printFilterHits(filterStats.IncludeHeaderPatterns, filterStats.IncludeHeaderHits)
+				fmt.Println()
+			}
+
+			if len(filterStats.IncludeBodyPatterns) > 0 {
+				hasFilterStats = true
+				fmt.Println("Include Body Filters:")
+				printFilterHits(filterStats.IncludeBodyPatterns, filterStats.IncludeBodyHits)
+				fmt.Println()
+			}
+
+			if len(filterStats.ExcludeHeaderPatterns) > 0 {
+				hasFilterStats = true
+				fmt.Println("Exclude Header Filters:")
+				printFilterHits(filterStats.ExcludeHeaderPatterns, filterStats.ExcludeHeaderHits)
+				fmt.Println()
+			}
+
+			if len(filterStats.ExcludeBodyPatterns) > 0 {
+				hasFilterStats = true
+				fmt.Println("Exclude Body Filters:")
+				printFilterHits(filterStats.ExcludeBodyPatterns, filterStats.ExcludeBodyHits)
+				fmt.Println()
+			}
+
+			if hasFilterStats {
+				fmt.Println("---")
+				fmt.Println()
+			}
+
 			for _, header := range headersToTrack {
-				fmt.Printf("Top 10 %s:\n", header)
-				stats.PrettyPrintTop(counter[header], 10)
+				fmt.Printf("Top %d %s:\n", topN, header)
+				stats.PrettyPrintTop(counter[header], topN)
 				fmt.Println()
 			}
 		}
@@ -116,6 +160,7 @@ var mboxStatsCmd = &cobra.Command{
 
 func init() {
 	mboxStatsCmd.Flags().StringVarP(&reportDir, "output", "o", ".", "Output directory for CSV reports")
+	mboxStatsCmd.Flags().IntVarP(&topN, "top", "t", 10, "Number of top items to display in statistics")
 	mboxStatsCmd.Flags().StringArrayVar(&includeHeader, "include-header", nil, "Regex allow-list applied to message headers (mutually exclusive with exclude flags)")
 	mboxStatsCmd.Flags().StringArrayVar(&includeBody, "include-body", nil, "Regex allow-list applied to message bodies (mutually exclusive with exclude flags)")
 	mboxStatsCmd.Flags().StringArrayVar(&excludeHeader, "exclude-header", nil, "Regex block-list applied to message headers (mutually exclusive with include flags)")
@@ -205,4 +250,36 @@ func formatHeaders(headers map[string][]string) string {
 		}
 	}
 	return sb.String()
+}
+
+func printFilterHits(patterns []string, hits map[string]int) {
+	// Sort by hit count descending
+	type pair struct {
+		Pattern string
+		Count   int
+		HasHits bool
+	}
+	var pairs []pair
+
+	// Add all patterns with their hit counts
+	for _, pattern := range patterns {
+		count := hits[pattern]
+		pairs = append(pairs, pair{pattern, count, count > 0})
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		// Sort by hit count descending, then by pattern
+		if pairs[i].Count != pairs[j].Count {
+			return pairs[i].Count > pairs[j].Count
+		}
+		return pairs[i].Pattern < pairs[j].Pattern
+	})
+
+	for _, p := range pairs {
+		if p.HasHits {
+			fmt.Printf("  ✓ %s: %d hits\n", p.Pattern, p.Count)
+		} else {
+			fmt.Printf("  ✗ %s: 0 hits\n", p.Pattern)
+		}
+	}
 }
