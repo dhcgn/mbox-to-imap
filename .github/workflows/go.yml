@@ -30,5 +30,11 @@ jobs:
     - name: Run mbox-stats debug script
       run: bash ./_debug.mbox-stats.sh
 
-    - name: Run dry-run debug scriptg
-      run: bash ./_debug.dry-run.sh
+    - name: Run mbox-stats filtered debug script
+      run: bash ./_debug.mbox-stats_filtered.sh
+
+    - name: Run dry-run debug script
+      run: bash ./_debug.dry-run_debug.sh
+
+    - name: Run dry-run info debug script
+      run: bash ./_debug.dry-run_info.sh

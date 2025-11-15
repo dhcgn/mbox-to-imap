@@ -1,3 +1,4 @@
+[![Go](https://github.com/dhcgn/mbox-to-imap/actions/workflows/go.yml/badge.svg)](https://github.com/dhcgn/mbox-to-imap/actions/workflows/go.yml)
 # mbox-to-imap
 
 **mbox-to-imap** is a command-line tool written in **Go** for importing emails from an `mbox` file into an IMAP mailbox.  
