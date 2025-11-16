@@ -133,6 +133,24 @@ func (r *Runner) Start() error {
 
 	r.cancel()
 
+	// Flush and close state tracker if it supports it
+	type flusher interface {
+		Flush() error
+	}
+	type closer interface {
+		Close() error
+	}
+	if f, ok := r.tracker.(flusher); ok {
+		if err := f.Flush(); err != nil {
+			r.logger.Warn("failed to flush state tracker", "err", err)
+		}
+	}
+	if c, ok := r.tracker.(closer); ok {
+		if err := c.Close(); err != nil {
+			r.logger.Warn("failed to close state tracker", "err", err)
+		}
+	}
+
 	err := r.err
 	duration := time.Since(r.since)
 	if err != nil {

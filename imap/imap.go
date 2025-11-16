@@ -65,14 +65,20 @@ func NewUploader(opts Options, r *runner.Runner, logger *slog.Logger) (*Uploader
 
 func (u *Uploader) run(ctx context.Context) error {
 	var (
-		client  *imapclient.Client
-		cleanup func()
+		client     *imapclient.Client
+		cleanup    func()
+		msgCount   int
+		flushEvery = 100 // Flush state file every 100 messages
 	)
 	defer func() {
 		if cleanup != nil {
 			cleanup()
 		}
 	}()
+
+	type flusher interface {
+		Flush() error
+	}
 
 	for {
 		select {
@@ -101,6 +107,15 @@ func (u *Uploader) run(ctx context.Context) error {
 				if u.logger != nil {
 					u.logger.Debug("dry-run upload", "messageID", msg.ID, "target", u.targetFolder(), "hash", msg.Hash)
 				}
+				msgCount++
+				// Periodically flush state file
+				if msgCount%flushEvery == 0 {
+					if f, ok := u.tracker.(flusher); ok {
+						if err := f.Flush(); err != nil {
+							u.logger.Warn("failed to flush state tracker", "err", err)
+						}
+					}
+				}
 				continue
 			}
 
@@ -127,6 +142,16 @@ func (u *Uploader) run(ctx context.Context) error {
 			u.runner.EmitEvent(stats.Event{Stage: stats.StageIMAP, Type: stats.EventTypeUploaded, MessageID: msg.ID})
 			if u.logger != nil {
 				u.logger.Debug("uploaded message", "messageID", msg.ID, "target", u.targetFolder(), "hash", msg.Hash)
+			}
+
+			msgCount++
+			// Periodically flush state file
+			if msgCount%flushEvery == 0 {
+				if f, ok := u.tracker.(flusher); ok {
+					if err := f.Flush(); err != nil {
+						u.logger.Warn("failed to flush state tracker", "err", err)
+					}
+				}
 			}
 		}
 	}

@@ -282,9 +282,11 @@ func CountMessages(path string, progressCallback func(bytesRead, totalSize int64
 		// Wrap file reader with progress tracking if callback provided
 		if progressCallback != nil {
 			progressReader = &progressTrackingReader{
-				r:        file,
-				total:    fileSize,
-				callback: progressCallback,
+				r:           file,
+				total:       fileSize,
+				callback:    progressCallback,
+				reportEvery: 100 * time.Millisecond, // Report every 100ms
+				lastReport:  time.Now(),
 			}
 			reader = mboxlib.NewReader(progressReader)
 		} else {
@@ -316,19 +318,25 @@ func CountMessages(path string, progressCallback func(bytesRead, totalSize int64
 
 // progressTrackingReader wraps an io.Reader and reports progress via callback.
 type progressTrackingReader struct {
-	r         io.Reader
-	total     int64
-	read      int64
-	readCount int
-	callback  func(read, total int64)
+	r           io.Reader
+	total       int64
+	read        int64
+	lastReport  time.Time
+	reportEvery time.Duration
+	callback    func(read, total int64)
 }
 
 func (p *progressTrackingReader) Read(buf []byte) (int, error) {
 	n, err := p.r.Read(buf)
 	p.read += int64(n)
-	p.readCount++
-	if p.callback != nil && p.readCount%100 == 0 {
-		p.callback(p.read, p.total)
+
+	// Use time-based throttling instead of count-based
+	if p.callback != nil {
+		now := time.Now()
+		if now.Sub(p.lastReport) >= p.reportEvery {
+			p.callback(p.read, p.total)
+			p.lastReport = now
+		}
 	}
 	return n, err
 }
