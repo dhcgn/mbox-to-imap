@@ -404,6 +404,7 @@ Each line contains:
 
 - Folder hierarchies inside the source `.mbox` are not replicated; all uploads target a single IMAP folder.
 - Sync state is purely local. Removing `processed.jsonl` (or switching machines without copying it) causes previously ingested messages to upload again.
+- Timestamps are set to the time when the message is uplaoded via imap. The original email date is not preserved.
 
 ---
 
