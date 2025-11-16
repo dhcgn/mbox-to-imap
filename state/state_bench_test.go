@@ -123,7 +123,7 @@ func BenchmarkFileTracker_WithFlush(b *testing.B) {
 		if err := tracker.MarkProcessed(hash, msgID); err != nil {
 			b.Fatal(err)
 		}
-		
+
 		// Simulate periodic flush every 100 entries
 		if i%100 == 0 {
 			if err := tracker.Flush(); err != nil {
