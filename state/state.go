@@ -64,6 +64,9 @@ type FileTracker struct {
 	*MemoryTracker
 	path    string
 	persist bool
+	writer  *bufio.Writer
+	file    *os.File
+	writeMu sync.Mutex
 }
 
 type fileRecord struct {
@@ -88,6 +91,16 @@ func NewFileTracker(stateDir string, persist bool) (*FileTracker, error) {
 
 	if err := tracker.load(); err != nil {
 		return nil, err
+	}
+
+	// Open file for buffered writing if persisting
+	if persist {
+		file, err := os.OpenFile(tracker.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return nil, fmt.Errorf("open state file for append: %w", err)
+		}
+		tracker.file = file
+		tracker.writer = bufio.NewWriterSize(file, 64*1024) // 64KB buffer
 	}
 
 	return tracker, nil
@@ -147,20 +160,64 @@ func (f *FileTracker) MarkProcessed(hash, messageID string) error {
 		return nil
 	}
 
-	file, err := os.OpenFile(f.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return fmt.Errorf("open state file for append: %w", err)
-	}
-	defer file.Close()
-
 	record := fileRecord{Hash: hash, MessageID: messageID}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("encode state record: %w", err)
 	}
-	if _, err := file.Write(append(data, '\n')); err != nil {
+
+	f.writeMu.Lock()
+	defer f.writeMu.Unlock()
+
+	if _, err := f.writer.Write(data); err != nil {
 		return fmt.Errorf("write state record: %w", err)
+	}
+	if err := f.writer.WriteByte('\n'); err != nil {
+		return fmt.Errorf("write newline: %w", err)
 	}
 
 	return nil
+}
+
+// Flush writes any buffered data to the underlying file.
+func (f *FileTracker) Flush() error {
+	if !f.persist || f.writer == nil {
+		return nil
+	}
+
+	f.writeMu.Lock()
+	defer f.writeMu.Unlock()
+
+	if err := f.writer.Flush(); err != nil {
+		return fmt.Errorf("flush state file: %w", err)
+	}
+	if err := f.file.Sync(); err != nil {
+		return fmt.Errorf("sync state file: %w", err)
+	}
+	return nil
+}
+
+// Close flushes and closes the state file.
+func (f *FileTracker) Close() error {
+	if !f.persist || f.file == nil {
+		return nil
+	}
+
+	f.writeMu.Lock()
+	defer f.writeMu.Unlock()
+
+	var firstErr error
+	if f.writer != nil {
+		if err := f.writer.Flush(); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("flush state file: %w", err)
+		}
+	}
+	if err := f.file.Sync(); err != nil && firstErr == nil {
+		firstErr = fmt.Errorf("sync state file: %w", err)
+	}
+	if err := f.file.Close(); err != nil && firstErr == nil {
+		firstErr = fmt.Errorf("close state file: %w", err)
+	}
+
+	return firstErr
 }

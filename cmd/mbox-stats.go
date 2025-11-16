@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -174,6 +175,12 @@ func saveCSVReports(counter map[string]map[string]int, headers []string, dir str
 		return err
 	}
 
+	// Reusable pair slice to reduce allocations
+	type pair struct {
+		Key   string
+		Value int
+	}
+
 	// Write data for each header category to a separate file
 	for _, header := range headers {
 		counts := counter[header]
@@ -187,7 +194,9 @@ func saveCSVReports(counter map[string]map[string]int, headers []string, dir str
 			return err
 		}
 
-		writer := csv.NewWriter(file)
+		// Use buffered writer for better performance
+		bufWriter := bufio.NewWriter(file)
+		writer := csv.NewWriter(bufWriter)
 
 		// Write header
 		if err := writer.Write([]string{"Value", "Count"}); err != nil {
@@ -195,25 +204,28 @@ func saveCSVReports(counter map[string]map[string]int, headers []string, dir str
 			return err
 		}
 
-		// Sort by count descending
-		type pair struct {
-			Key   string
-			Value int
-		}
-		var pairs []pair
+		// Pre-allocate pairs slice with capacity
+		pairs := make([]pair, 0, len(counts))
 		for k, v := range counts {
 			pairs = append(pairs, pair{k, v})
 		}
+
+		// Sort by count descending
 		sort.Slice(pairs, func(i, j int) bool {
 			return pairs[i].Value > pairs[j].Value
 		})
 
+		// Reuse record slice to reduce allocations
+		record := make([]string, 2)
+
 		// Write top N entries
-		for i := 0; i < limit && i < len(pairs); i++ {
-			record := []string{
-				pairs[i].Key,
-				strconv.Itoa(pairs[i].Value),
-			}
+		maxEntries := limit
+		if len(pairs) < maxEntries {
+			maxEntries = len(pairs)
+		}
+		for i := 0; i < maxEntries; i++ {
+			record[0] = pairs[i].Key
+			record[1] = strconv.Itoa(pairs[i].Value)
 			if err := writer.Write(record); err != nil {
 				file.Close()
 				return err
@@ -221,11 +233,13 @@ func saveCSVReports(counter map[string]map[string]int, headers []string, dir str
 		}
 
 		writer.Flush()
-		file.Close()
-
 		if err := writer.Error(); err != nil {
+			file.Close()
 			return err
 		}
+
+		bufWriter.Flush()
+		file.Close()
 	}
 
 	return nil
