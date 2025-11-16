@@ -1,0 +1,4 @@
+mbox-to-imap-*.log
+*gitignore_file*
+processed.jsonl
+report_*.csv

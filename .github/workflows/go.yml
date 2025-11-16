@@ -1,0 +1,44 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: 'stable'
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Run coverage
+      run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+
+    - name: Run mbox-stats debug script
+      run: bash ./_debug.mbox-stats.sh
+
+    - name: Run mbox-stats filtered debug script
+      run: bash ./_debug.mbox-stats_filtered.sh
+
+    - name: Run dry-run debug script
+      run: bash ./_debug.dry-run_debug.sh
+
+    - name: Run dry-run info debug script
+      run: bash ./_debug.dry-run_info.sh
